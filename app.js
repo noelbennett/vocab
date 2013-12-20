@@ -1,10 +1,11 @@
-var DATA_URI         = '/data/polak';
+var DATA_URI   = '/data/vocab/dictionary';
+var RECENT_URI = '/data/vocab/recent';
 var MAX_RECENT_WORDS = 12;
 
 var App = {
 
   data   : null,
-  recent : [],
+  recent : null,
 
   /**
    * Sets header message
@@ -30,6 +31,23 @@ var App = {
   },
 
   /**
+   * TODO: clean all this up
+   */
+  addRecent : function(obj)
+  {
+    App.recent.unshift(obj);
+    if (App.recent.length > MAX_RECENT_WORDS) {
+      App.recent.pop();
+    }
+
+    $.ajax({
+      url  : RECENT_URI,
+      type : 'PUT',
+      data : JSON.stringify(App.recent)
+    });
+  },
+
+  /**
    * Adds new word
    */
   add : function(e)
@@ -41,7 +59,7 @@ var App = {
     };
 
     App.data.splice(_.sortedIndex(App.data, obj, 'word'), 0, obj);
-    App.recent.unshift(obj);
+    App.addRecent(obj);
 
     App.persistData();
     App.refreshView();
@@ -122,8 +140,7 @@ var App = {
   {
     App.dom.recentUl.empty();
 
-    var numWords = Math.min(App.recent.length, MAX_RECENT_WORDS);
-    for (var i = 0; i < numWords; i++) {
+    for (var i = 0; i < App.recent.length; i++) {
       var li = $('<li><p></p><p></p></li>');
       li.find('p:eq(0)').text(App.recent[i].word);
       li.find('p:eq(1)').text(App.recent[i].translation);
@@ -153,14 +170,12 @@ var App = {
   },
 
   /**
-   * Set up app
+   *
    */
-  start : function()
+  fetchDictionary : function()
   {
-    //
-    // load data
-    //
-    App.setMessage('Loading data');
+    var ready = new $.Deferred();
+
     $.ajax({
       url      : DATA_URI,
       datatype : 'json',
@@ -174,6 +189,7 @@ var App = {
           loaded([]);
         } else {
           App.setMessage('FAILED!');
+          ready.reject();
         }
       }
     });
@@ -181,8 +197,57 @@ var App = {
     var loaded = function(data)
     {
       App.data = _.sortBy(data, 'word');
-      App.refreshView();
+      ready.resolve();
     };
+
+    return ready.promise();
+  },
+
+  /**
+   *
+   */
+  fetchRecent : function()
+  {
+    var ready = new $.Deferred();
+
+    $.ajax({
+      url      : RECENT_URI,
+      datatype : 'json',
+      success  : function(resp) {
+        loaded(resp);
+      },
+      error : function(xhr) {
+        if (xhr.status == 404) {
+          loaded([]);
+        } else {
+          ready.reject();
+        }
+      }
+    });
+
+    var loaded = function(data)
+    {
+      App.recent = data;
+      ready.resolve();
+    };
+
+    return ready.promise();
+  },
+
+  /**
+   * Set up app
+   */
+  start : function()
+  {
+    //
+    // load data
+    //
+    App.setMessage('Loading data');
+
+    $.when(
+      App.fetchDictionary(),
+      App.fetchRecent()
+    ).then(App.refreshView);
 
     //
     // build dom references
