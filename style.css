@@ -1,0 +1,81 @@
+body {
+  margin : 0;
+}
+
+div.content {
+  width   : 1000px;
+}
+
+div.content > div {
+  float       : left;
+  margin-left : 10px;
+}
+
+ul {
+  list-style : none;
+  padding    : 0;
+}
+
+ul > li {
+  overflow : hidden;
+}
+
+
+/**
+ * HEADER
+ */
+div.header {
+  border-bottom : 1px solid #000055;
+  background    : #EEEEFF;
+  padding       : 8px;
+}
+
+#message {
+  float : right;
+}
+
+
+/**
+ * DICTIONARY
+ */
+
+div.dictionary {
+  width : 790px;
+}
+
+div.dictionary > * {
+  overflow : hidden;
+}
+
+div.dictionary > ul > li > p {
+  float  : left;
+  width  : 320px;
+  margin : 2px 0;
+}
+
+div.dictionary >ul > li > p:last-child {
+  float  : left;
+  width  : 50px;
+  margin : 2px 0;
+}
+
+
+/**
+ * RECENT WORDS
+ */
+div.recent {
+  float : left;
+  width : 190px;
+}
+
+div.recent > ul {
+  font-size   : 9pt;
+}
+
+div.recent > ul > li > p:first-child {
+  font-weight : bold;
+}
+
+div.recent > ul > li > p:nth-child(2) {
+  padding-left : 30px;
+}
