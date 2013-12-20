@@ -1,9 +1,19 @@
 body {
-  margin : 0;
+  margin      : 0;
+  font-family : "Georgia", "Trebuchet MS", "Arial";
+  min-width   : 1000px;
+  background  : #666677;
 }
 
 div.content {
-  width   : 1000px;
+  width       : 1000px;
+  position    : relative;
+  left        : -500px;
+  margin-left : 50%;
+  padding-top : 10px;
+  background  : #ffffff;
+  overflow    : hidden;
+  box-shadow  : 0 0 10px #000044;
 }
 
 div.content > div {
@@ -11,13 +21,38 @@ div.content > div {
   margin-left : 10px;
 }
 
+h3 {
+  font-size      : 14pt;
+  margin         : 8px;
+  text-transform : uppercase;
+}
+
 ul {
   list-style : none;
   padding    : 0;
+  height     : 510px;
+  padding    : 8px 6px;
 }
 
-ul > li {
-  overflow : hidden;
+button {
+  border     : none;
+  cursor     : pointer;
+  background : #333399;
+  color      : #FFFFFF;
+}
+
+button:hover {
+  background : #3333BB;
+}
+
+button.delete {
+  background : #BB5555;
+  width      : 20px;
+  height     : 20px;
+}
+
+button.delete:hover {
+  background : #CC8888;
 }
 
 
@@ -25,9 +60,13 @@ ul > li {
  * HEADER
  */
 div.header {
-  border-bottom : 1px solid #000055;
-  background    : #EEEEFF;
-  padding       : 8px;
+  background : #000044;
+  color      : #FFFFFF;
+  padding    : 6px 20px;
+}
+
+h1 {
+  margin : 12px 0;
 }
 
 #message {
@@ -40,17 +79,32 @@ div.header {
  */
 
 div.dictionary {
-  width : 790px;
+  width : 784px;
 }
 
 div.dictionary > * {
   overflow : hidden;
 }
 
+div.dictionary > ul {
+  background : linear-gradient(#DDDDEE, #EEEEF4 3%, #F8F8FF, #EEEEF4 97%, #DDDDEE);
+  border     : 1px solid #DDDDEE;
+}
+
+div.dictionary > ul > li {
+  height  : 30px;
+}
+
 div.dictionary > ul > li > p {
   float  : left;
-  width  : 320px;
+  width  : 360px;
   margin : 2px 0;
+}
+
+div.dictionary > ul > li > p > input {
+  border     : none;
+  box-shadow : 0 0 10px #ccccff;
+  width      : 345px;
 }
 
 div.dictionary >ul > li > p:last-child {
@@ -65,17 +119,20 @@ div.dictionary >ul > li > p:last-child {
  */
 div.recent {
   float : left;
-  width : 190px;
+  width : 186px;
 }
 
 div.recent > ul {
-  font-size   : 9pt;
+  background : linear-gradient(#F8F8FF, #EEEEF4 97%, #DDDDEE);
+  border     : 1px solid #DDDDEE;
+}
+
+div.recent > ul > li > p {
+  float      : left;
+  width      : 50%;
+  font-size  : 9pt;
 }
 
 div.recent > ul > li > p:first-child {
   font-weight : bold;
-}
-
-div.recent > ul > li > p:nth-child(2) {
-  padding-left : 30px;
 }
