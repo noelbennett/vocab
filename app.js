@@ -1,11 +1,145 @@
-var DATA_URI   = '/data/vocab/dictionary';
-var RECENT_URI = '/data/vocab/recent';
-var MAX_RECENT_WORDS = 12;
+/********************************************************************************************************************
+ * MODEL LAYER
+ ********************************************************************************************************************/
+
+/**
+ * AbstractDataSet - manages all data for a domain
+ */
+var AbstractDataSet = function() {};
+AbstractDataSet.prototype = {
+
+  data : null,
+  url  : null, // abstract
+
+  /**
+   * parse - Handle data from server.  Default is just to use the data as returned.
+   */
+  parse : function(data) { return data; },
+
+  /**
+   * load - Load all the data.
+   *
+   * @returns promise
+   */
+  load : function() 
+  {
+    var _this = this;
+    var ready = new $.Deferred();
+
+    $.ajax({
+      url      : this.url,
+      datatype : 'json',
+      success  : function(resp) {
+        _this.data = _this.parse(resp);
+        ready.resolve(resp);
+      },
+      error : function(xhr) {
+        if (xhr.status == 404) { // It's a "RESTy" 404 ...so there's no data there yet.
+          _this.data = _this.parse([]);
+          ready.resolve([]);
+        } else {
+          ready.reject();
+        }
+      }
+    });
+
+    return ready.promise();
+  },
+
+  /**
+   * write - Writes all the data.
+   *
+   * @returns promise
+   */
+  write : function()
+  {
+    return $.ajax({
+      url  : this.url,
+      type : 'PUT',
+      data : JSON.stringify(this.data),
+    }).promise();
+  }
+};
+
+
+/**
+ * Dictonary
+ */
+var DictionaryDataSet = function() {};
+_.extend(DictionaryDataSet.prototype, AbstractDataSet.prototype, {
+  
+  url : '/data/vocab/dictionary',
+
+  /**
+   * parse - Sorts the data by word.
+   */
+  parse : function(data) { return _.sortBy(data, 'word'); },
+
+  /**
+   * add - Inserts the data in the right place and persists.
+   */
+  add : function(item)
+  {
+    this.data.splice(_.sortedIndex(this.data, item, 'word'), 0, item);
+    return this.write();
+  },
+
+  /**
+   * delete - Removes item from set.
+   *
+   * @param string word - word  to delete
+   */
+  delete : function(word)
+  {
+    var index = _.sortedIndex(this.data, { word : word }, 'word');
+
+    if (this.data[index].word !== word) { // couldn't find item (shouldn't happen)
+      return (new $.Deferrered()).reject().promise(); // TODO: return info on why it failed
+    }
+
+    this.data.splice(index, 1);
+    return this.write();
+  }
+});
+
+
+/**
+ * RecentItems
+ */
+var MAX_RECENT_ITEMS = 12;
+
+var RecentItemsDataSet = function() {};
+_.extend(RecentItemsDataSet.prototype, AbstractDataSet.prototype, {
+
+  url : '/data/vocab/recent',
+
+  /**
+   * add - Adds item and truncates list to max length
+   */
+  add : function(item)
+  {
+    this.data.unshift(item);
+    while (this.data.length > MAX_RECENT_ITEMS) { this.data.pop(); }
+    return this.write();
+  }
+
+});
+
+
+/**
+ * Interface
+ */
+var Data = {
+  dictionary  : new DictionaryDataSet(),
+  recentItems : new RecentItemsDataSet()
+};
+
+
+/********************************************************************************************************************
+ * APPLICATION (VIEW/CONTROL)
+ ********************************************************************************************************************/
 
 var App = {
-
-  data   : null,
-  recent : null,
 
   /**
    * Sets header message
@@ -13,38 +147,6 @@ var App = {
   setMessage : function(msg)
   {
     $('#message').text(msg);
-  },
-
-  /**
-   * Writes local data to server
-   */
-  persistData : function()
-  {
-    App.setMessage('Saving...');
-    $.ajax({
-      url  : DATA_URI,
-      type : 'PUT',
-      data : JSON.stringify(App.data),
-      success : function() { App.setMessage('Changes saved'); },
-      error   : function() { App.setMessage('Failed to sync to server'); }
-    });
-  },
-
-  /**
-   * TODO: clean all this up
-   */
-  addRecent : function(obj)
-  {
-    App.recent.unshift(obj);
-    if (App.recent.length > MAX_RECENT_WORDS) {
-      App.recent.pop();
-    }
-
-    $.ajax({
-      url  : RECENT_URI,
-      type : 'PUT',
-      data : JSON.stringify(App.recent)
-    });
   },
 
   /**
@@ -58,11 +160,13 @@ var App = {
       translation : App.dom.translation.val()
     };
 
-    App.data.splice(_.sortedIndex(App.data, obj, 'word'), 0, obj);
-    App.addRecent(obj);
+    App.setMessage('adding item'); 
 
-    App.persistData();
-    App.refreshView();
+    $.when(
+      Data.dictionary.add(obj),
+      Data.recentItems.add(obj)
+    ).then(function() { App.setMessage('all changes saved'); },
+           function() { App.setMessage('failed to save changes'); });
   },
 
   /**
@@ -79,16 +183,13 @@ var App = {
       return;
     }
 
-    var index = _.sortedIndex(App.data, { word : word }, 'word');
+    App.setMessage('deleting item'); 
 
-    if (App.data[index].word !== word) { // shouldn't happen
-      console.warn('Item to delete can not be found in local database');
-      return;
-    }
+    Data.dictionary.delete(word).then(
+      function() { App.setMessage('all changes saved'); },
+      function() { App.setMessage('failed to save changes'); }
+    );
 
-    App.data.splice(index, 1);
-
-    App.persistData();
     App.refreshView();
   },
 
@@ -99,7 +200,9 @@ var App = {
   {
     var word = App.dom.word.val();
 
-    var found = _.findWhere(App.data, { 'word' : word });
+    var data = Data.dictionary.data;
+
+    var found = _.findWhere(data, { 'word' : word });
     if (found) {
       App.dom.translation.val(found.translation).attr('disabled', 'disabled');
     } else {
@@ -107,15 +210,15 @@ var App = {
     }
     App.dom.add.hide();
 
-    var insertIndex = _.sortedIndex(App.data, { word : word }, 'word');
+    var insertIndex = _.sortedIndex(data, { word : word }, 'word');
 
     var populateLi = function(li, i)
     {
-      var data = (i >= 0 && i < App.data.length) ? App.data[i] : null;
+      var item = (i >= 0 && i < data.length) ? data[i] : null;
 
-      li.find('p:eq(0)').text(data ? data.word        : '-');
-      li.find('p:eq(1)').text(data ? data.translation : '-');
-      if (data) {
+      li.find('p:eq(0)').text(item ? item.word        : '-');
+      li.find('p:eq(1)').text(item ? item.translation : '-');
+      if (item) {
         li.find('button.delete').show();
       } else {
         li.find('button.delete').hide();
@@ -140,10 +243,10 @@ var App = {
   {
     App.dom.recentUl.empty();
 
-    for (var i = 0; i < App.recent.length; i++) {
+    for (var i = 0; i < Data.recentItems.data.length; i++) {
       var li = $('<li><p></p><p></p></li>');
-      li.find('p:eq(0)').text(App.recent[i].word);
-      li.find('p:eq(1)').text(App.recent[i].translation);
+      li.find('p:eq(0)').text(Data.recentItems.data[i].word);
+      li.find('p:eq(1)').text(Data.recentItems.data[i].translation);
       App.dom.recentUl.append(li);
     }
   },
@@ -170,71 +273,6 @@ var App = {
   },
 
   /**
-   *
-   */
-  fetchDictionary : function()
-  {
-    var ready = new $.Deferred();
-
-    $.ajax({
-      url      : DATA_URI,
-      datatype : 'json',
-      success  : function(resp) {
-        App.setMessage('ready');
-        loaded(resp);
-      },
-      error : function(xhr) {
-        if (xhr.status == 404) {
-          App.setMessage('Server has no data');
-          loaded([]);
-        } else {
-          App.setMessage('FAILED!');
-          ready.reject();
-        }
-      }
-    });
-
-    var loaded = function(data)
-    {
-      App.data = _.sortBy(data, 'word');
-      ready.resolve();
-    };
-
-    return ready.promise();
-  },
-
-  /**
-   *
-   */
-  fetchRecent : function()
-  {
-    var ready = new $.Deferred();
-
-    $.ajax({
-      url      : RECENT_URI,
-      datatype : 'json',
-      success  : function(resp) {
-        loaded(resp);
-      },
-      error : function(xhr) {
-        if (xhr.status == 404) {
-          loaded([]);
-        } else {
-          ready.reject();
-        }
-      }
-    });
-
-    var loaded = function(data)
-    {
-      App.recent = data;
-      ready.resolve();
-    };
-
-    return ready.promise();
-  },
-
-  /**
    * Set up app
    */
   start : function()
@@ -245,9 +283,12 @@ var App = {
     App.setMessage('Loading data');
 
     $.when(
-      App.fetchDictionary(),
-      App.fetchRecent()
-    ).then(App.refreshView);
+      Data.dictionary.load(),
+      Data.recentItems.load()
+    ).then(function() {
+      App.setMessage('ready');
+      App.refreshView();
+    });
 
     //
     // build dom references
