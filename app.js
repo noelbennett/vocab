@@ -80,7 +80,11 @@ _.extend(DictionaryDataSet.prototype, AbstractDataSet.prototype, {
    */
   add : function(item)
   {
-    this.data.splice(_.sortedIndex(this.data, item, 'word'), 0, item);
+    var index = _.sortedIndex(this.data, item, 'word');
+    if (index < this.data.length && this.data[index].word === item.word) { // don't add word if it already exists
+      return (new $.Deferred()).reject().promise(); // TODO: return info on why it failed
+    }
+    this.data.splice(index, 0, item);
     return this.write();
   },
 
@@ -165,7 +169,8 @@ var App = {
     $.when(
       Data.dictionary.add(obj),
       Data.recentItems.add(obj)
-    ).then(function() { App.setMessage('all changes saved'); },
+    ).then(function() { App.setMessage('all changes saved');
+                        App.refreshView(); },
            function() { App.setMessage('failed to save changes'); });
   },
 
