@@ -103,8 +103,9 @@ div.dictionary > ul > li > p {
 
 div.dictionary > ul > li > p > input {
   border     : none;
-  box-shadow : 0 0 10px #ccccff;
+  box-shadow : 0 0 10px #222;
   width      : 345px;
+  height	 : 20px;
 }
 
 div.dictionary >ul > li > p:last-child {
