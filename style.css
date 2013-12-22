@@ -106,6 +106,7 @@ div.dictionary > ul > li > p > input {
   box-shadow : 0 0 10px #222;
   width      : 345px;
   height	 : 20px;
+  background-color:purple;
 }
 
 div.dictionary >ul > li > p:last-child {
