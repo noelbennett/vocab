@@ -1,4 +1,69 @@
 /********************************************************************************************************************
+ * UTILS
+ ********************************************************************************************************************/
+
+Utils =
+{
+  /**
+   * Options Filter - Filters and validates a set of options according to given rules.  This is so you if you typo
+   * an option or neglect to define a rule for it it'll bust right away with an exception.
+   *
+   * @param options  - an object (hash) of the options.
+   * @param defaults - an object (hash) of rules // TODO comment the lexicon
+   * @returns function(string key) - a function used to access an option
+   */
+  optionsFilter : function(originalOptions, rules)
+  {
+    originalOptions = _.clone(originalOptions);
+    var options = {};
+
+    // validate and apply defaults
+    _.each(rules, function(rule, key) {
+      var isSet = _.has(originalOptions, key);
+      if (isSet) {
+        options[key] = originalOptions[key];
+        delete originalOptions[key];
+      }
+
+      if (rule === 'required') {
+        if (!isSet) { throw new Error(Utils.sprintf('`%s` is missing', key)); }
+      } else {
+        throw new Error(Utils.sprintf('invalid rule `%s`', rule));
+      }
+    });
+
+    // check for superfluous options
+    if (!_.isEmpty(originalOptions)) {
+      throw new Error(Utils.sprintf('attempting to set invalid option(s): `%s`', _.keys(originalOptions).join('`, `')));
+    }
+
+    // method to access option
+    return function(key)
+    {
+      if (!_.has(options, key)) {
+        throw new Error(Utils.sprintf('attempting to retrieve invalid option: `%s`', key));
+      }
+      return options[key];
+    };
+  },
+
+  /**
+   * sprintf - you already know what it is... except it only accepts %s right now
+   */
+  sprintf : function(format /* varargs */)
+  {
+    var argIndex = 1;
+    var _arguments = arguments;
+
+    return format.replace(/%([%s])/, function(fullMatch, captured) {
+      switch (captured) { case 's' : return _arguments[argIndex++];
+                          default  : return fullMatch; }
+    });
+  }
+};
+
+
+/********************************************************************************************************************
  * MODEL LAYER
  ********************************************************************************************************************/
 
@@ -67,7 +132,7 @@ AbstractDataSet.prototype = {
  */
 var DictionaryDataSet = function() {};
 _.extend(DictionaryDataSet.prototype, AbstractDataSet.prototype, {
-  
+
   url : '/data/vocab/dictionary',
 
   /**
@@ -140,38 +205,143 @@ var Data = {
 
 
 /********************************************************************************************************************
- * APPLICATION (VIEW/CONTROL)
+ * CONTROL/VIEW MODULES
  ********************************************************************************************************************/
 
-var App = {
+/**
+ * Abstract control module
+ */
+var ControlModule = function() {};
 
+ControlModule.prototype =
+{
   /**
-   * Sets header message
+   * Creates a `this.dom` object containing jquery objects
+   *
+   * @param selectors - an object the keys of which being the keys in this.dom, the values being jquery selectors
+   * @returns void
    */
-  setMessage : function(msg)
+  _createDomReferences : function(selectors)
   {
-    $('#message').text(msg);
+    var _this = this;
+
+    this.dom = {};
+    _.each(selectors, function(selector, key) {
+      _this.dom[key] = $(selector);
+    });
   },
 
   /**
-   * Adds new word
+   * Binds handles to dom objects set up in _createDomReferences().
+   *
+   * @param handlers - a hash the keys being the keys of the dom item, the values being a hash itself with keys
+   *                   being the event types and values being the function
+   * @returns void
+   */
+  _bindDomEventHandlers : function(handlers)
+  {
+    var _this = this;
+
+    _.each(handlers, function(handlerSet, key) {
+      if (!_.has(_this.dom, key)) {
+        throw new Error(Utils.sprintf('no DOM reference for `%s`', key));
+      }
+
+      _.each(handlerSet, function(handler, event) {
+        _this.dom[key].bind(event, _.bind(handler, _this));
+      });
+    });
+  },
+
+  /**
+   * Absorbs an options applying validation and defaults
+   *
+   * @param opts  - an object containing the options
+   * @param rules - keys correspond to keys in the object, rules include:
+   *    "default"  - this will be the default option if the item is unset
+   */
+  _absorbOpts : function(opts, rules)
+  {
+    this.getOpt = Utils.optionsFilter(opts, rules);
+  }
+};
+
+/**
+ * Messages module
+ */
+var MessagesModule = function()
+{
+  this._createDomReferences({
+    message : '#message'
+  });
+};
+
+_.extend(MessagesModule.prototype, ControlModule.prototype,
+{
+  /**
+   * Sets the progress message
+   */
+  setMessage : function(msg)
+  {
+    this.dom.message.text(msg);
+  },
+});
+
+
+/**
+ * Dictonary module
+ */
+var DictionaryModule = function(opts)
+{
+  this._absorbOpts(opts, {
+    data     : 'required',
+    messages : 'required',
+    onAdd    : 'required'
+  });
+
+  this._createDomReferences({
+    formItem         : '#form',
+    wordInput        : '#form input[name=word]',
+    translationInput : '#form input[name=translation]',
+    addButton        : '#form button.add',
+    deleteButtons    : 'ul button.delete'
+  });
+
+  this._bindDomEventHandlers({
+    addButton     : { click : this.add },
+    deleteButtons : { click : this.delete },
+    wordInput        : { change : this.refresh,
+                         keyup  : this.refresh },
+    translationInput : { change : this.enableAdd,
+                         keyup  : this.enableAdd }
+  });
+};
+
+_.extend(DictionaryModule.prototype, ControlModule.prototype,
+{
+  /**
+   * Adds new word to the dictionary
    */
   add : function(e)
   {
+    var _this = this;
+
     e.preventDefault();
     var obj = {
-      word        : App.dom.word.val(),
-      translation : App.dom.translation.val()
+      word        : this.dom.wordInput.val(),
+      translation : this.dom.translationInput.val()
     };
 
-    App.setMessage('adding item'); 
+    this.getOpt('messages').setMessage('adding item'); 
 
     $.when(
-      Data.dictionary.add(obj),
-      Data.recentItems.add(obj)
-    ).then(function() { App.setMessage('all changes saved');
-                        App.refreshView(); },
-           function() { App.setMessage('failed to save changes'); });
+      this.getOpt('data').add(obj)
+      // TODO: recent item
+    ).then(function() { _this.getOpt('messages').setMessage('all changes saved'); },
+           function() { _this.getOpt('messages').setMessage('failed to save changes'); });
+
+    this.getOpt('onAdd')(obj);
+    this.refresh();
   },
 
   /**
@@ -184,36 +354,36 @@ var App = {
     var li = $(e.target).parents('li').first();
     var word = li.find('p:eq(0)').text();
 
-    if (!confirm('Are you sure you want to delete "' + word + '"?')) {
+    if (!confirm(Utils.sprintf('Are you sure you want to delete "%s"?', word))) {
       return;
     }
 
-    App.setMessage('deleting item'); 
+    this.getOpt('messages').setMessage('deleting item');
 
-    Data.dictionary.delete(word).then(
-      function() { App.setMessage('all changes saved'); },
-      function() { App.setMessage('failed to save changes'); }
-    );
+    var _this = this;
+    this.getOpt('data').delete(word).then(
+      function() { _this.getOpt('messages').setMessage('all changes saved'); },
+      function() { _this.getOpt('messages').setMessage('failed to save changes'); });
 
-    App.refreshView();
+    this.refresh();
   },
 
   /**
    * Shows words similar to what is being typed in
    */
-  refreshDictionary : function(e)
+  refresh : function(e)
   {
-    var word = App.dom.word.val();
+    var word = this.dom.wordInput.val();
 
-    var data = Data.dictionary.data;
+    var data = this.getOpt('data').data;
 
     var found = _.findWhere(data, { 'word' : word });
     if (found) {
-      App.dom.translation.val(found.translation).attr('disabled', 'disabled');
+      this.dom.translationInput.val(found.translation).attr('disabled', 'disabled');
     } else {
-      App.dom.translation.val('').removeAttr('disabled');
+      this.dom.translationInput.val('').removeAttr('disabled');
     }
-    App.dom.add.hide();
+    this.dom.addButton.hide();
 
     var insertIndex = _.sortedIndex(data, { word : word }, 'word');
 
@@ -234,90 +404,102 @@ var App = {
 
     // walk forward from the form item populating matches
     i = insertIndex + (found ? 1 : 0); // skip item if it's already in the list
-    for (li = App.dom.formLi.next(); li.length; li = li.next()) { populateLi(li, i++); }
+    for (li = this.dom.formItem.next(); li.length; li = li.next()) { populateLi(li, i++); }
 
     // walk backwards from the form item populating matches
     var i = insertIndex - 1;
-    for (li = App.dom.formLi.prev(); li.length; li = li.prev()) { populateLi(li, i--); }
+    for (li = this.dom.formItem.prev(); li.length; li = li.prev()) { populateLi(li, i--); }
   },
 
-  /**
-   * Refreshes recent items
-   */
-  refreshRecent : function()
-  {
-    App.dom.recentUl.empty();
-
-    for (var i = 0; i < Data.recentItems.data.length; i++) {
-      var li = $('<li><p></p><p></p></li>');
-      li.find('p:eq(0)').text(Data.recentItems.data[i].word);
-      li.find('p:eq(1)').text(Data.recentItems.data[i].translation);
-      App.dom.recentUl.append(li);
-    }
-  },
-
-  /**
-   * Refreshes content panes
-   */
-  refreshView : function()
-  {
-    App.refreshDictionary();
-    App.refreshRecent();
-  },
 
   /**
    * Enable add button if there is translation text
    */
   enableAdd : function()
   {
-    if (App.dom.translation.val().length) {
-      App.dom.add.show();
-    } else {
-      App.dom.add.hide();
+    this.dom.translationInput.val().length && this.dom.addButton.show() || this.dom.addButton.hide();
+  }
+
+});
+
+
+/**
+ * Recent items module
+ */
+var RecentItemsModule = function(opts)
+{
+  this._absorbOpts(opts, {
+    data : 'required'
+  });
+
+  this._createDomReferences({
+    'list' : 'div.recent > ul'
+  });
+};
+
+_.extend(RecentItemsModule.prototype, ControlModule.prototype, {
+
+  /**
+   * Refreshes recent items
+   */
+  refresh : function()
+  {
+    this.dom.list.empty();
+
+    for (var i = 0; i < this.getOpt('data').data.length; i++) {
+      var li = $('<li><p></p><p></p></li>');
+      li.find('p:eq(0)').text(this.getOpt('data').data[i].word);
+      li.find('p:eq(1)').text(this.getOpt('data').data[i].translation);
+      this.dom.list.append(li);
     }
-  },
+  }
+});
+
+
+/********************************************************************************************************************
+ * APPLICATION
+ ********************************************************************************************************************/
+
+var App = {
 
   /**
    * Set up app
    */
   start : function()
   {
+
+    //
+    // create view modules
+    //
+    var messagesModule = new MessagesModule();
+
+    var recentItemsModule = new RecentItemsModule({
+      data : Data.recentItems
+    });
+
+    var dictionaryModule = new DictionaryModule({
+      data     : Data.dictionary,
+      messages : messagesModule,
+      onAdd    : function(item) {
+        Data.recentItems.add(item);
+        recentItemsModule.refresh();
+      }
+    });
+
+
     //
     // load data
     //
-    App.setMessage('Loading data');
+    messagesModule.setMessage('Loading data');
 
     $.when(
       Data.dictionary.load(),
       Data.recentItems.load()
     ).then(function() {
-      App.setMessage('ready');
-      App.refreshView();
+      messagesModule.setMessage('ready');
+      dictionaryModule.refresh();
+      recentItemsModule.refresh();
     });
-
-    //
-    // build dom references
-    //
-    App.dom = {
-      formLi      : $('#form'),
-      word        : $('#form input[name=word]'),
-      translation : $('#form input[name=translation]'),
-      add         : $('#form button.add'),
-      deletes     : $('ul button.delete'),
-      before      : $('#before'),
-      after       : $('#after'),
-      recentUl    : $('div.recent > ul'),
-    };
-
-    //
-    // bind events
-    //
-    App.dom.add.bind('click',          App.add);
-    App.dom.deletes.bind('click',      App.delete);
-    App.dom.word.bind('change',        App.refreshView);
-    App.dom.word.bind('keyup',         App.refreshView);
-    App.dom.translation.bind('change', App.enableAdd);
-    App.dom.translation.bind('keyup',  App.enableAdd);
   }
 };
 
