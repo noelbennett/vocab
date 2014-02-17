@@ -312,9 +312,13 @@ var DictionaryModule = function(opts)
     deleteButtons : { click : this.delete },
     wordInput        : { change : this.refresh,
                          keyup  : this.refresh },
-    translationInput : { change : this.enableAdd,
-                         keyup  : this.enableAdd }
+    translationInput : { change   : this.enableAdd,
+                         keyup    : this.enableAdd,
+                         keypress : this.submitOnEnter }
   });
+
+  this.dom.deleteButtons.attr('tabindex', -1);
+  this.dom.addButton.attr('tabindex', -1);
 };
 
 _.extend(DictionaryModule.prototype, ControlModule.prototype,
@@ -326,7 +330,7 @@ _.extend(DictionaryModule.prototype, ControlModule.prototype,
   {
     var _this = this;
 
-    e.preventDefault();
+    if (e) { e.preventDefault(); }
     var obj = {
       word        : this.dom.wordInput.val(),
       translation : this.dom.translationInput.val()
@@ -342,6 +346,8 @@ _.extend(DictionaryModule.prototype, ControlModule.prototype,
 
     this.getOpt('onAdd')(obj);
     this.refresh();
+
+    this.dom.wordInput.trigger('focus').select();
   },
 
   /**
@@ -411,13 +417,22 @@ _.extend(DictionaryModule.prototype, ControlModule.prototype,
     for (li = this.dom.formItem.prev(); li.length; li = li.prev()) { populateLi(li, i--); }
   },
 
-
   /**
    * Enable add button if there is translation text
    */
-  enableAdd : function()
+  enableAdd : function(e)
   {
     this.dom.translationInput.val().length && this.dom.addButton.show() || this.dom.addButton.hide();
+  },
+
+  /**
+   * Handles keyup and adds item on ENTER
+   */
+  submitOnEnter : function(e)
+  {
+    if (e.which === 0x0D) {
+      this.add();
+    }
   }
 
 });

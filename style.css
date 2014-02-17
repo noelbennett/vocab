@@ -34,6 +34,10 @@ ul {
   padding    : 8px 6px;
 }
 
+li {
+  overflow : hidden;
+}
+
 button {
   border     : none;
   cursor     : pointer;
